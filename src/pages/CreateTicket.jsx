@@ -31,8 +31,20 @@ export default function CreateTicket() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const validate = () => {
+    if (!form.clientName.trim()) return 'Le nom du client est obligatoire.'
+    if (/^[0-9]+$/.test(form.clientName.trim())) return 'Le nom ne peut pas être uniquement des chiffres.'
+    if (!form.clientPhone) return 'Le téléphone est obligatoire.'
+    if (!/^(\+216)?[0-9]{8}$/.test(form.clientPhone)) return 'Numéro de téléphone invalide (8 chiffres, ex: 55123456).'
+    if (form.clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.clientEmail)) return 'Format d\'email invalide.'
+    return null
+  }
+
   const handleSubmit = async (e) => {
-    e.preventDefault(); setError(''); setLoading(true)
+    e.preventDefault()
+    const err = validate()
+    if (err) { setError(err); return }
+    setError(''); setLoading(true)
     try {
       const res = await createTicket(form)
       navigate(`/tickets/${res.data.id}`)
@@ -64,7 +76,16 @@ export default function CreateTicket() {
               <input required value={form.clientName} onChange={e => set('clientName', e.target.value)} className={inputCls} />
             </Field>
             <Field label="Téléphone" required>
-              <input required value={form.clientPhone} onChange={e => set('clientPhone', e.target.value)} className={inputCls} />
+              <input
+                required
+                value={form.clientPhone}
+                onChange={e => set('clientPhone', e.target.value.replace(/[^0-9+]/g, ''))}
+                maxLength={12}
+                pattern="(\+216)?[0-9]{8}"
+                title="8 chiffres requis (ex: 55123456 ou +21655123456)"
+                placeholder="55123456"
+                className={inputCls}
+              />
             </Field>
             <Field label="Email">
               <input type="email" value={form.clientEmail} onChange={e => set('clientEmail', e.target.value)} className={inputCls} />

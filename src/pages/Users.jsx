@@ -72,7 +72,15 @@ export default function Users() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
-              <input value={form.phone} onChange={e => set('phone',e.target.value)} className={inputCls} />
+              <input
+                value={form.phone}
+                onChange={e => set('phone', e.target.value.replace(/[^0-9+]/g, ''))}
+                maxLength={12}
+                pattern="(\+216)?[0-9]{8}"
+                title="8 chiffres requis (ex: 55123456)"
+                placeholder="55123456"
+                className={inputCls}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Rôle *</label>

@@ -102,7 +102,16 @@ export default function EditTicket() {
                 <input required value={form.clientName} onChange={e => set('clientName', e.target.value)} className={inputCls} />
               </Field>
               <Field label="Téléphone" required>
-                <input required value={form.clientPhone} onChange={e => set('clientPhone', e.target.value)} className={inputCls} />
+                <input
+                  required
+                  value={form.clientPhone}
+                  onChange={e => set('clientPhone', e.target.value.replace(/[^0-9+]/g, ''))}
+                  maxLength={12}
+                  pattern="(\+216)?[0-9]{8}"
+                  title="8 chiffres requis (ex: 55123456 ou +21655123456)"
+                  placeholder="55123456"
+                  className={inputCls}
+                />
               </Field>
               <Field label="Email">
                 <input type="email" value={form.clientEmail} onChange={e => set('clientEmail', e.target.value)} className={inputCls} />

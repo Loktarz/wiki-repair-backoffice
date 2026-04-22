@@ -34,7 +34,7 @@ export const deleteUser    = (id)       => api.delete(`/users/${id}`)
 export const changePassword = (data)   => api.patch('/users/me/password', data)
 
 // ── Tickets ─────────────────────────────────────────────────────────────────
-export const getTickets        = ()           => api.get('/tickets')
+export const getTickets        = (params = {}) => api.get('/tickets', { params })
 export const getTicket         = (id)         => api.get(`/tickets/${id}`)
 export const createTicket      = (data)       => api.post('/tickets', data)
 export const updateTicket      = (id, data)   => api.patch(`/tickets/${id}`, data)
