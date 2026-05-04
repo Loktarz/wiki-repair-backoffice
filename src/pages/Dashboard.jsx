@@ -25,10 +25,21 @@ function getPhase(status) {
 export default function Dashboard() {
   const { user } = useAuth()
   const [tickets, setTickets] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getTickets().then(r => setTickets(r.data)).finally(() => setLoading(false))
+    // The /api/tickets endpoint is paginated → ask for a big page so the dashboard
+    // can compute aggregate stats across all (active) tickets.
+    getTickets({ page: 0, size: 1000 })
+      .then(r => {
+        // Backend returns Page<TicketResponse> = { content, totalPages, totalElements, ... }
+        // Fall back to r.data being a plain array in case the API ever changes back.
+        const list = Array.isArray(r.data) ? r.data : (r.data?.content ?? [])
+        setTickets(list)
+        setTotalCount(r.data?.totalElements ?? list.length)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   const byPhase = tickets.reduce((acc, t) => {
@@ -48,7 +59,7 @@ export default function Dashboard() {
           {/* Stat cards */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             <div className="rounded-xl p-4 bg-green-600 text-white col-span-2 md:col-span-1 lg:col-span-1">
-              <p className="text-3xl font-bold">{tickets.length}</p>
+              <p className="text-3xl font-bold">{totalCount}</p>
               <p className="text-sm mt-0.5 opacity-80">Total tickets</p>
             </div>
             {PHASES.slice(0,5).map(p => (

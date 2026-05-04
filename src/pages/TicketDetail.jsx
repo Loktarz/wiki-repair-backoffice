@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getTicket, updateStatus, assignTechnician, assignInfoline, getUsersByRole, deleteTicket, getTicketHistory } from '../api'
+import { getTicket, updateStatus, assignTechnician, assignInfoline, getUsersByRole, deleteTicket, getTicketHistory, downloadBonReception, uploadSignedBon, downloadSignedBon, recordTentativeOutcome, downloadFacture } from '../api'
 import { useAuth } from '../AuthContext'
 import StatusBadge from '../components/StatusBadge'
 
@@ -33,6 +33,7 @@ export default function TicketDetail() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [history, setHistory]     = useState([])
+  const [tentativeNotes, setTentativeNotes] = useState('')
 
   const load = () => getTicket(id).then(r => setTicket(r.data))
   const loadHistory = () => getTicketHistory(id).then(r => setHistory(r.data)).catch(() => {})
@@ -160,6 +161,88 @@ export default function TicketDetail() {
     navigate('/tickets')
   }
 
+  // Download generated Bon de Réception PDF
+  const handleDownloadBon = async () => {
+    try {
+      const r = await downloadBonReception(id)
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `BonReception_${ticket.ticketNumber}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      load() // reload ticket so bonNumber appears
+      setError('')
+    } catch (e) {
+      setError(e.response?.data?.message || 'Erreur génération PDF')
+    }
+  }
+
+  // Upload signed Bon de Réception scan
+  const handleUploadSigned = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      setError('Seuls les fichiers PDF sont acceptés')
+      return
+    }
+    try {
+      await uploadSignedBon(id, file)
+      load()
+      loadHistory()
+      setError('')
+      e.target.value = '' // reset input
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur upload du bon signé')
+    }
+  }
+
+  // Record tentative_reparation outcome (technician)
+  const handleTentativeOutcome = async (success) => {
+    const label = success ? 'réussie' : 'échouée'
+    if (!window.confirm(`Confirmer la tentative ${label} ?\n→ Statut: ${success ? 'REPARATION_TERMINEE' : 'REPARATION_IMPOSSIBLE'}`)) return
+    try {
+      const r = await recordTentativeOutcome(id, success, tentativeNotes)
+      setTicket(r.data)
+      setTentativeNotes('')
+      loadHistory()
+      setError('')
+    } catch (e) {
+      setError(e.response?.data?.message || 'Erreur enregistrement résultat')
+    }
+  }
+
+  // Download the final invoice (Facture WIKI)
+  const handleDownloadFacture = async () => {
+    try {
+      const r = await downloadFacture(id)
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Facture_${ticket.ticketNumber}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      setError('')
+    } catch (e) {
+      setError(e.response?.data?.message || 'Erreur génération facture')
+    }
+  }
+
+  // View previously uploaded signed PDF
+  const handleViewSigned = async () => {
+    try {
+      const r = await downloadSignedBon(id)
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }))
+      window.open(url, '_blank')
+    } catch (e) {
+      setError(e.response?.data?.message || 'Erreur lecture bon signé')
+    }
+  }
+
   if (loading) return <p className="p-6 text-gray-400">Chargement...</p>
   if (!ticket)  return <p className="p-6 text-red-500">Ticket introuvable.</p>
 
@@ -242,6 +325,128 @@ export default function TicketDetail() {
           <div className="bg-blue-50 rounded-xl border border-blue-100 p-4 md:col-span-2">
             <h2 className="text-sm font-semibold text-blue-700 mb-2">Notes de diagnostic</h2>
             <p className="text-sm text-blue-800">{ticket.diagnosticNotes}</p>
+          </div>
+        )}
+
+        {/* Tentative de réparation outcome (technician only, only when status is TENTATIVE_REPARATION) */}
+        {ticket.status === 'TENTATIVE_REPARATION' && (user?.role === 'TECHNICIAN' || user?.role === 'ADMIN') && (
+          <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 md:col-span-2">
+            <h2 className="text-sm font-semibold text-amber-900 mb-2">⚠️ Tentative de réparation en cours</h2>
+            <p className="text-xs text-amber-800 mb-3">
+              Indiquez le résultat de la tentative partielle. Le statut du ticket sera mis à jour automatiquement
+              et le client sera notifié par email.
+            </p>
+            <textarea
+              value={tentativeNotes}
+              onChange={(e) => setTentativeNotes(e.target.value)}
+              placeholder="Notes du technicien (pièces remplacées, observations…)"
+              className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              rows={2}
+            />
+            <div className="flex gap-2">
+              <button onClick={() => handleTentativeOutcome(true)}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg transition">
+                ✓ Tentative réussie → REPARATION_TERMINEE
+              </button>
+              <button onClick={() => handleTentativeOutcome(false)}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded-lg transition">
+                ✗ Tentative échouée → REPARATION_IMPOSSIBLE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bon de Réception */}
+        {(user?.role === 'ADMIN' || user?.role === 'AGENT_MAGASIN' || user?.role === 'INFOLINE') && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:col-span-2">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">Bon de Réception</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Generate / download */}
+              <div className="bg-green-50 border border-green-100 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs uppercase tracking-wide text-green-700 font-semibold">PDF officiel</span>
+                  {ticket.bonNumber && (
+                    <span className="text-xs font-mono bg-green-600 text-white px-2 py-0.5 rounded">N° {ticket.bonNumber}</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  {ticket.bonNumber
+                    ? 'PDF déjà généré. Vous pouvez le re-télécharger.'
+                    : 'Générer le Bon de Réception officiel avec un numéro unique.'}
+                </p>
+                <button onClick={handleDownloadBon}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg transition">
+                  📄 {ticket.bonNumber ? 'Re-télécharger' : 'Générer'} le Bon (PDF)
+                </button>
+              </div>
+
+              {/* Upload signed copy */}
+              {(user?.role === 'ADMIN' || user?.role === 'AGENT_MAGASIN') && (
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs uppercase tracking-wide text-blue-700 font-semibold">Bon signé</span>
+                    {ticket.signedBonPath && (
+                      <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">✓ Téléversé</span>
+                    )}
+                  </div>
+                  {ticket.signedBonPath ? (
+                    <>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Téléversé le {ticket.signedBonUploadedAt ? new Date(ticket.signedBonUploadedAt).toLocaleString('fr-TN') : ''}
+                      </p>
+                      <div className="flex gap-2">
+                        <button onClick={handleViewSigned}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-2 rounded-lg transition">
+                          👁 Voir
+                        </button>
+                        <label className="flex-1 cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm px-3 py-2 rounded-lg transition text-center">
+                          🔄 Remplacer
+                          <input type="file" accept="application/pdf" onChange={handleUploadSigned} className="hidden" />
+                        </label>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Téléverser le PDF scanné après signature du client → passage automatique à <strong>FICHE_REPARATION_IMPRIMEE</strong>.
+                      </p>
+                      <label className="cursor-pointer block w-full bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition text-center">
+                        📤 Téléverser le bon signé (PDF)
+                        <input type="file" accept="application/pdf" onChange={handleUploadSigned} className="hidden" />
+                      </label>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Facture (final invoice) — visible when ticket is billable */}
+        {(ticket.status === 'LIVRE_CLIENT' || ticket.status === 'DEVIS_REFUSE' || ticket.status === 'REPARATION_IMPOSSIBLE') &&
+         (user?.role === 'ADMIN' || user?.role === 'AGENT_MAGASIN' || user?.role === 'INFOLINE') && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:col-span-2">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">Facture</h2>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-800">
+                  {ticket.status === 'LIVRE_CLIENT'
+                    ? 'Facture finale (devis complet + TVA 19%)'
+                    : 'Facture diagnostic uniquement (20 DT HT + TVA 19%)'}
+                </p>
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  {ticket.status === 'LIVRE_CLIENT'
+                    ? 'Réparation effectuée et livrée — facturation au montant total du devis.'
+                    : ticket.status === 'DEVIS_REFUSE'
+                      ? 'Devis refusé par le client — seuls les frais de diagnostic sont facturés.'
+                      : 'Réparation impossible — seuls les frais de diagnostic sont facturés.'}
+                </p>
+              </div>
+              <button onClick={handleDownloadFacture}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded-lg transition whitespace-nowrap">
+                💰 Télécharger la facture
+              </button>
+            </div>
           </div>
         )}
 

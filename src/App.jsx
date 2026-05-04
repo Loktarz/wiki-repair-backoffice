@@ -12,6 +12,14 @@ import DevisPage from './pages/DevisPage'
 import Users from './pages/Users'
 import Profile from './pages/Profile'
 
+// Statuses that belong to the "Devis" phase per the procedure document
+const DEVIS_STATUSES = [
+  'DEVIS_EN_ATTENTE',
+  'DEVIS_ENVOYE_CLIENT',
+  'DEVIS_ACCEPTE',
+  'DEVIS_REFUSE',
+]
+
 export default function App() {
   return (
     <AuthProvider>
@@ -32,7 +40,11 @@ export default function App() {
             <Route path="devis/:ticketId"  element={
               <ProtectedRoute roles={['ADMIN','INFOLINE']}><DevisPage /></ProtectedRoute>
             } />
-            <Route path="devis"            element={<TicketList />} />
+            <Route path="devis"            element={
+              <ProtectedRoute roles={['ADMIN','INFOLINE']}>
+                <TicketList statusScope={DEVIS_STATUSES} title="Devis" />
+              </ProtectedRoute>
+            } />
             <Route path="users"            element={
               <ProtectedRoute roles={['ADMIN']}><Users /></ProtectedRoute>
             } />

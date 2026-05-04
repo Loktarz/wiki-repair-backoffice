@@ -43,6 +43,25 @@ export const assignTechnician  = (id, techId)  => api.patch(`/tickets/${id}/assi
 export const assignInfoline    = (id, infoId)  => api.patch(`/tickets/${id}/assign-infoline`,    { infolineId: infoId })
 export const deleteTicket      = (id)         => api.delete(`/tickets/${id}`)
 export const getTicketHistory  = (id)         => api.get(`/tickets/${id}/history`)
+export const recordTentativeOutcome = (id, success, notes) =>
+  api.post(`/tickets/${id}/tentative-outcome`, { success, notes })
+
+// ── Bon de Réception ────────────────────────────────────────────────────────
+export const downloadBonReception = (id) =>
+  api.get(`/tickets/${id}/bon-reception`, { responseType: 'blob' })
+export const uploadSignedBon = (id, file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api.post(`/tickets/${id}/bon-reception/signed`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+export const downloadSignedBon = (id) =>
+  api.get(`/tickets/${id}/bon-reception/signed`, { responseType: 'blob' })
+
+// ── Facture ────────────────────────────────────────────────────────────────
+export const downloadFacture = (id) =>
+  api.get(`/tickets/${id}/facture`, { responseType: 'blob' })
 
 // ── Devis ───────────────────────────────────────────────────────────────────
 export const createDevis       = (data)       => api.post('/devis', data)

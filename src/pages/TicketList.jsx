@@ -14,13 +14,24 @@ const ALL_STATUSES = [
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-export default function TicketList() {
+/**
+ * `statusScope` (optional): array of statuses this page is restricted to.
+ *   When set:
+ *     - the status dropdown only shows those statuses
+ *     - the result set is filtered client-side to that scope
+ *     - we fetch with a larger page size so the scope is fully covered
+ * `title` (optional): page heading. Defaults to "Tickets".
+ */
+export default function TicketList({ statusScope = null, title = 'Tickets' }) {
   const { user } = useAuth()
+  const isScoped = !!(statusScope && statusScope.length)
+  const dropdownStatuses = isScoped ? statusScope : ALL_STATUSES
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [searchInput, setSearchInput] = useState('') // raw input before debounce
+  const [showArchived, setShowArchived] = useState(false)
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const [page, setPage]         = useState(0)
@@ -46,10 +57,36 @@ export default function TicketList() {
     setPage(0)
   }, [statusFilter])
 
+  // Reset to page 0 when archive view toggled
+  useEffect(() => {
+    setPage(0)
+  }, [showArchived])
+
   // ── Fetch tickets from backend ────────────────────────────────────────────
+  // When statusScope is set, we fetch with a large page size and paginate client-side
+  // (the API only supports a single status at a time, not a list).
   const fetchTickets = useCallback(() => {
     setLoading(true)
-    const params = { page, size }
+
+    if (isScoped && !statusFilter) {
+      // Scoped view, no specific status picked → fetch big chunk, filter client-side
+      const params = { page: 0, size: 1000, archived: showArchived }
+      if (search) params.search = search
+      getTickets(params)
+        .then(r => {
+          const all = (r.data.content || []).filter(t => statusScope.includes(t.status))
+          const tp  = Math.max(1, Math.ceil(all.length / size))
+          const slice = all.slice(page * size, (page + 1) * size)
+          setTickets(slice)
+          setTotalPages(tp)
+          setTotalElements(all.length)
+        })
+        .finally(() => setLoading(false))
+      return
+    }
+
+    // Normal server-side pagination (non-scoped, OR scoped + a specific status picked)
+    const params = { page, size, archived: showArchived }
     if (search)       params.search = search
     if (statusFilter) params.status = statusFilter
 
@@ -60,7 +97,7 @@ export default function TicketList() {
         setTotalElements(r.data.totalElements)
       })
       .finally(() => setLoading(false))
-  }, [page, size, search, statusFilter])
+  }, [page, size, search, statusFilter, showArchived, isScoped, statusScope])
 
   useEffect(() => {
     fetchTickets()
@@ -81,17 +118,43 @@ export default function TicketList() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Tickets</h1>
+          <h1 className="text-xl font-bold text-gray-800">{title}</h1>
           {!loading && (
-            <p className="text-xs text-gray-400 mt-0.5">{totalElements} ticket(s) au total</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {totalElements} ticket(s){isScoped ? ' dans cette phase' : ' au total'}
+            </p>
           )}
         </div>
-        {(user?.role === 'ADMIN' || user?.role === 'AGENT_MAGASIN') && (
+        {!isScoped && (user?.role === 'ADMIN' || user?.role === 'AGENT_MAGASIN') && (
           <Link to="/tickets/new"
             className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
             + Nouveau Ticket
           </Link>
         )}
+      </div>
+
+      {/* ── Archive toggle tabs ── */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200">
+        <button
+          onClick={() => setShowArchived(false)}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+            !showArchived
+              ? 'border-green-600 text-green-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Tickets actifs
+        </button>
+        <button
+          onClick={() => setShowArchived(true)}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+            showArchived
+              ? 'border-gray-600 text-gray-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          📦 Archives
+        </button>
       </div>
 
       {/* ── Filters ── */}
@@ -108,8 +171,8 @@ export default function TicketList() {
           onChange={e => setStatusFilter(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
         >
-          <option value="">Tous les statuts</option>
-          {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          <option value="">{isScoped ? 'Tous (cette phase)' : 'Tous les statuts'}</option>
+          {dropdownStatuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
         {/* Clear filters */}
